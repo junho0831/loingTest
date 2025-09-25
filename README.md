@@ -19,6 +19,17 @@ H2 console: `http://localhost:8080/h2-console` (JDBC URL `jdbc:h2:mem:logintest`
 
 테스트 페이지: `http://localhost:8080/` (정적 HTML 대시보드)
 
+## 사용 방법 (대시보드)
+- 실행 후 브라우저에서 `http://localhost:8080/` 접속
+- 회원가입: 이메일/비밀번호/이름 입력 → “회원가입” 클릭
+- 로그인: “로그인” → Access/Refresh 토큰이 화면에 표시/저장(localStorage)
+- 내 정보: “/users/me” → 현재 사용자 정보 확인
+- 아이템: “목록 새로고침”(공개), “아이템 생성(인증 필요)”(로그인 후)
+- 토큰 갱신: “토큰 갱신” → 새 Access/Refresh 발급
+- 로그아웃: “로그아웃” → 서버 측 Refresh 무효화(token_version 증가)
+
+빠른 만료 테스트: 실행 전에 `JWT_ACCESS_TTL=PT5S` 등으로 설정하여 갱신/만료 흐름을 쉽게 확인할 수 있습니다.
+
 ## Environment Variables (.env.example)
 `.env.example` 파일을 복사하여 환경변수를 설정하세요(또는 셸에서 직접 설정). HS256을 사용하므로 비밀키는 최소 256비트(32바이트 이상)여야 합니다.
 
@@ -62,6 +73,36 @@ docker-compose up --build
 `.env` 파일을 사용하려면 `docker-compose.yml`의 `env_file` 주석을 해제하고 루트에 `.env`를 준비하세요.
 
 ## API
+
+## 사용 방법 (API 직접 호출)
+- 회원가입
+```bash
+curl -X POST http://localhost:8080/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"a@b.com","password":"P@ssw0rd!","name":"Alice"}'
+```
+- 로그인
+```bash
+curl -s -X POST http://localhost:8080/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"a@b.com","password":"P@ssw0rd!"}'
+```
+- 내 정보
+```bash
+curl http://localhost:8080/users/me -H "Authorization: Bearer <accessToken>"
+```
+- 토큰 갱신
+```bash
+curl -X POST http://localhost:8080/auth/refresh \
+  -H 'Content-Type: application/json' \
+  -d '{"refreshToken":"<refreshToken>"}'
+```
+- 로그아웃
+```bash
+curl -X POST http://localhost:8080/auth/logout \
+  -H 'Content-Type: application/json' \
+  -d '{"refreshToken":"<refreshToken>"}'
+```
 
 ### POST `/auth/register`
 Request:
