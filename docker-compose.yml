@@ -1,0 +1,22 @@
+version: "3.8"
+services:
+  app:
+    build: .
+    container_name: logintest-app
+    ports:
+      - "8080:8080"
+    environment:
+      # JWT secrets (예시는 개발용, 실제로는 반드시 교체)
+      - JWT_ACCESS_SECRET=dev-access-secret-please-change-32bytes-min-123456
+      - JWT_REFRESH_SECRET=dev-refresh-secret-please-change-32bytes-min-abcdef
+      # ISO-8601 Duration
+      - JWT_ACCESS_TTL=PT15M
+      - JWT_REFRESH_TTL=P14D
+      # Kakao (선택)
+      - KAKAO_CLIENT_ID=728a5de1316bf2373601b0c0cd477ba9
+      - KAKAO_CLIENT_SECRET=
+      - KAKAO_REDIRECT_URI=http://localhost:8080/auth/kakao/callback
+      - APP_FRONT_REDIRECT_URI=
+    # 필요 시 외부 .env 파일을 사용하려면 아래 주석을 해제하고 .env 준비
+    # env_file:
+    #   - .env
