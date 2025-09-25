@@ -57,6 +57,7 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(reg -> reg
                         .requestMatchers("/", "/index.html", "/actuator/health").permitAll()
+                        .requestMatchers("/login/oauth2/code/kakao").permitAll()
                         .requestMatchers("/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/items", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated()

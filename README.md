@@ -62,7 +62,7 @@ docker run --rm -p 8080:8080 \
   -e JWT_REFRESH_SECRET=dev-refresh-secret-please-change-32bytes-min-abcdef \
   -e JWT_ACCESS_TTL=PT15M -e JWT_REFRESH_TTL=P14D \
   -e KAKAO_CLIENT_ID=your_kakao_client_id \
-  -e KAKAO_REDIRECT_URI=http://localhost:8080/auth/kakao/callback \
+  -e KAKAO_REDIRECT_URI=http://localhost:8080/login/oauth2/code/kakao \
   logintest:local
 ```
 
@@ -187,17 +187,25 @@ Response 200:
 - 최초 로그인 시 자동 가입(ROLE=USER, passwordHash=null)
 - 재로그인 시 동일 providerId로 기존 계정 재사용 → 중복 생성 방지
 
-환경변수:
+환경변수(업데이트됨):
 ```
 KAKAO_CLIENT_ID=...            # 필수
-KAKAO_CLIENT_SECRET=...        # 선택(사용 중이면 카카오 콘솔과 일치)
-KAKAO_REDIRECT_URI=http://localhost:8080/auth/kakao/callback
-APP_FRONT_REDIRECT_URI=http://localhost:3000/auth/kakao/callback  # 선택
+KAKAO_CLIENT_SECRET=...        # 콘솔에서 "사용함"이면 필수(일치해야 함)
+KAKAO_REDIRECT_URI=http://localhost:8080/login/oauth2/code/kakao   # 기본값도 동일
+APP_FRONT_REDIRECT_URI=http://localhost:8080/                      # 선택(미설정 시 기본적으로 / 로 이동)
 ```
 
-테스트 페이지로 콜백하여 바로 토큰을 저장하고 싶다면:
+카카오 로그인 흐름(업데이트됨)
 ```
-APP_FRONT_REDIRECT_URI=http://localhost:8080/
+1) 기본 동작: 카카오 콜백에서 홈(/)으로 302 리다이렉트하며 URL 해시에 토큰 전달
+   예) http://localhost:8080/#accessToken=...&refreshToken=...
+   화면(index.html)이 해시를 파싱해 토큰을 저장하고 로그인 상태를 표시
+
+2) 프런트로 리다이렉트: APP_FRONT_REDIRECT_URI를 설정하면 해당 URL로 리다이렉트(#토큰 포함)
+   예) APP_FRONT_REDIRECT_URI=http://localhost:3000/auth/callback
+
+3) 특정 경로로 리다이렉트: /auth/kakao/login?redirect=/next 형태로 시작하면
+   콜백 후 /next#accessToken=...&refreshToken=... 로 이동(동일 오리진 경로만 허용)
 ```
 이 경우 콜백에서 `http://localhost:8080/#accessToken=...&refreshToken=...` 로 리다이렉트되고, 페이지가 해시를 파싱해 토큰을 저장합니다.
 
