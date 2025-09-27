@@ -131,7 +131,9 @@
     }
 
     function kakaoLogin() {
-      window.location.href = '/auth/kakao/login';
+      const path = location.pathname + (location.search || '');
+      const redirectParam = encodeURIComponent(path);
+      window.location.href = '/auth/kakao/login?redirect=' + redirectParam;
     }
 
     // ===== 로그인 상태 표시 =====
@@ -228,7 +230,7 @@
       <button onclick="doMe()">/users/me</button>
       <button onclick="doRefresh()">토큰 갱신</button>
       <button onclick="doLogout()">로그아웃</button>
-      <a href="/auth/kakao/login" style="text-decoration:none;"><button type="button">카카오 로그인</button></a>
+      <button type="button" onclick="kakaoLogin()">카카오 로그인</button>
     </div>
     <div id="authLog" class="hint"></div>
   </div>

@@ -10,10 +10,10 @@ import java.time.Duration;
  */
 @Component
 public class JwtProperties {
-    @Value("${jwt.access.secret:${JWT_ACCESS_SECRET:change-me-access}}")
+    @Value("${jwt.access.secret:${JWT_ACCESS_SECRET}}")
     public String accessSecret;
 
-    @Value("${jwt.refresh.secret:${JWT_REFRESH_SECRET:change-me-refresh}}")
+    @Value("${jwt.refresh.secret:${JWT_REFRESH_SECRET}}")
     public String refreshSecret;
 
     @Value("${jwt.access.ttl:${JWT_ACCESS_TTL:PT15M}}")

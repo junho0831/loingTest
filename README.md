@@ -30,8 +30,8 @@ H2 console: `http://localhost:8080/h2-console` (JDBC URL `jdbc:h2:mem:logintest`
 
 빠른 만료 테스트: 실행 전에 `JWT_ACCESS_TTL=PT5S` 등으로 설정하여 갱신/만료 흐름을 쉽게 확인할 수 있습니다.
 
-## Environment Variables (.env.example)
-`.env.example` 파일을 복사하여 환경변수를 설정하세요(또는 셸에서 직접 설정). HS256을 사용하므로 비밀키는 최소 256비트(32바이트 이상)여야 합니다.
+## Environment Variables
+애플리케이션은 부팅 시 `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET`이 없으면 즉시 종료합니다. 셸에서 직접 export 하거나 `docker-compose.yml`을 수정해 안전한 값을 넣어주세요. HS256을 사용하므로 비밀키는 최소 256비트(32바이트 이상)여야 합니다.
 
 ```
 JWT_ACCESS_SECRET=dev-access-secret-please-change-32bytes-min-123456
@@ -41,7 +41,7 @@ JWT_ACCESS_TTL=PT15M
 JWT_REFRESH_TTL=P14D
 ```
 
-개발 편의를 위해 기본값이 `application.properties`에 정의되어 있지만, 실제 환경에서는 반드시 환경변수로 안전한 값으로 교체하세요.
+값을 지정하지 않으면 애플리케이션이 시작되지 않습니다. 아래 예시는 개발 편의용이니 실제 환경에서는 반드시 교체하세요.
 
 강력한 비밀키(32바이트를 Base64 인코딩)를 생성하려면 다음 명령을 사용할 수 있습니다:
 
@@ -70,7 +70,7 @@ docker run --rm -p 8080:8080 \
 ```bash
 docker-compose up --build
 ```
-`.env` 파일을 사용하려면 `docker-compose.yml`의 `env_file` 주석을 해제하고 루트에 `.env`를 준비하세요.
+`docker-compose.yml`에는 개발용 값이 하드코딩되어 있어 바로 실행할 수 있습니다. 보안 환경에서는 해당 파일의 `environment` 블록을 안전한 값으로 교체하거나 `docker-compose --env-file` 옵션 등을 사용하세요.
 
 ## API
 

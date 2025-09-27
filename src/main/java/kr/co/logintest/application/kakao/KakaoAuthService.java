@@ -37,6 +37,7 @@ public class KakaoAuthService {
         return base + "?response_type=code" +
                 "&client_id=" + url(props.clientId) +
                 "&redirect_uri=" + url(props.redirectUri) +
+                "&prompt=login" +
                 (state != null ? "&state=" + url(state) : "");
     }
 
