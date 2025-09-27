@@ -159,7 +159,10 @@ Response 200:
   - Access: `sub`(userId), `email`, `role`, `typ=access`, `iat`, `exp`
   - Refresh: `sub`(userId), `email`, `tv`(tokenVersion), `typ=refresh`, `iat`, `exp`
 - Expiry: configurable via `JWT_ACCESS_TTL` and `JWT_REFRESH_TTL` (default 15m/14d)
-- Signing: HS256 with secrets from env
+- Signing: **HS256** (공유 키)
+  - 이유: 단일 서비스 구조에서 키 관리가 단순하고, 환경변수 기반으로 빠르게 교체할 수 있어 과제 범위 내 개발/테스트가 용이합니다.
+  - RS256 미선택 사유: 비대칭 키를 쓰려면 KMS/비밀 저장소에 개인키를 두고, 검증 노드에 공개키를 배포하며, 키 회전·JWKS 공개까지 포함한 운영 전략이 필요합니다. 이번 과제에서는 해당 인프라 구성이 범위를 벗어나 단일 키(HS256)를 택했습니다.
+  - 향후 확장: `JwtTokenService` 시그니처를 바꿔 키 로딩 방식을 추상화하면 RS256 전환이 가능하며, 다중 서비스에서 토큰 검증을 공유하려면 공개키 노출(JWKS) 등을 추가하면 됩니다.
 - Delivery: `Authorization: Bearer <token>` header
 - Invalidation: On logout, increment `users.token_version` so old refresh tokens are rejected
 
