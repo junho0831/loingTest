@@ -5,7 +5,7 @@ Implements email/password signup and login with JWT Access/Refresh tokens, refre
 Optional Kakao OAuth2 is outlined below (skeleton not included by default).
 
 ## Stack
-- Java 17, Spring Boot 3
+- Java 17, Spring Boot 3.5
 - Spring Security (stateless, JWT)
 - Spring Data JPA + H2 for local dev
 - JJWT (HS256)
@@ -70,6 +70,8 @@ docker run --rm -p 8080:8080 \
 ```bash
 docker-compose up --build
 ```
+Swagger UI: `http://localhost:8080/swagger-ui/index.html` (springdoc-openapi)
+
 `docker-compose.yml`에는 개발용 값이 하드코딩되어 있어 바로 실행할 수 있습니다. 보안 환경에서는 해당 파일의 `environment` 블록을 안전한 값으로 교체하거나 `docker-compose --env-file` 옵션 등을 사용하세요.
 
 ## API

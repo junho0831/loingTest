@@ -6,7 +6,7 @@
 
 ## 구성요소
 - 클라이언트: 정적 대시보드 `http://localhost:8080/` 에서 버튼으로 E2E 테스트
-- 서버: Spring Boot 3, Spring Security(JWT, Stateless), Validation
+- 서버: Spring Boot 3.5, Spring Security(JWT, Stateless), Validation
 - DB: H2(in-memory) — `users`, `items`
 - JWT: JJWT(HS256), Access/Refresh 서명·검증
 
@@ -144,6 +144,7 @@ sequenceDiagram
 
 ## 실행/테스트 가이드(요약)
 - 로컬 실행: `./gradlew bootRun`
+- Swagger UI: `http://localhost:8080/swagger-ui/index.html` (springdoc-openapi)
 - Docker: `docker-compose up --build`
 - 대시보드: 브라우저에서 `http://localhost:8080/`
   - 회원가입 → 로그인 → `/users/me` → Items 생성/목록 → 토큰 갱신 → 로그아웃 시나리오 확인
