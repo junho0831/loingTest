@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>로그인 테스트(필수 기능만)</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; }
+    h1 { margin-bottom: 8px; }
+    h2 { margin-top: 24px; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+    input, button { padding: 8px; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 12px; margin: 12px 0; }
+    pre { background: #f7f7f7; padding: 10px; border-radius: 6px; overflow: auto; }
+    .hint { color: #666; font-size: 12px; }
+    .ok { color: #0a7; }
+    .err { color: #c33; }
+    .token { word-break: break-all; }
+    label { display: block; font-size: 13px; color: #444; }
+    .state { padding: 8px 10px; border-radius: 6px; margin: 8px 0 16px; display: inline-block; }
+    .state.ok { background: #eafff6; color: #067a4d; border: 1px solid #b8f0dd; }
+    .state.err { background: #fff2f2; color: #b00020; border: 1px solid #f5b5b5; }
+  </style>
+  <script>
+    // 최소 기능 테스트용 API 래퍼
+    const api = {
+      async post(path, body, useAccess=false) {
+        const headers = { 'Content-Type': 'application/json' };
+        if (useAccess) headers['Authorization'] = 'Bearer ' + (localStorage.getItem('accessToken') || '');
+        const r = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body || {}) });
+        return parse(r);
+      },
+      async get(path, useAccess=false) {
+        const headers = {};
+        if (useAccess) headers['Authorization'] = 'Bearer ' + (localStorage.getItem('accessToken') || '');
+        const r = await fetch(path, { headers });
+        return parse(r);
+      }
+    };
+
+    async function parse(resp) {
+      let data = null;
+      try { data = await resp.json(); } catch {}
+      return { ok: resp.ok, status: resp.status, data };
+    }
+
+    function setTokens(access, refresh) {
+      if (access) localStorage.setItem('accessToken', access);
+      if (refresh) localStorage.setItem('refreshToken', refresh);
+      renderTokens();
+      updateLoginState();
+    }
+    function clearTokens() {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      renderTokens();
+      updateLoginState();
+    }
+    function renderTokens() {
+      document.getElementById('access').textContent = localStorage.getItem('accessToken') || '(없음)';
+      document.getElementById('refresh').textContent = localStorage.getItem('refreshToken') || '(없음)';
+    }
+    function log(id, msg, isErr=false) {
+      const el = document.getElementById(id);
+      el.innerHTML = `<span class="${isErr?'err':'ok'}">${msg}</span>`;
+    }
+
+    // 필수 플로우: 회원가입/로그인/Me/갱신/로그아웃/아이템
+    async function doRegister() {
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const name = document.getElementById('name').value.trim();
+      const r = await api.post('/auth/register', { email, password, name });
+      if (r.ok) log('authLog', '가입 성공: ' + JSON.stringify(r.data));
+      else log('authLog', '가입 실패: ' + JSON.stringify(r.data), true);
+    }
+    async function doLogin() {
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const r = await api.post('/auth/login', { email, password });
+      if (r.ok) {
+        setTokens(r.data.accessToken, r.data.refreshToken);
+        log('authLog', '로그인 성공');
+        fetchMeForState();
+      } else {
+        log('authLog', '로그인 실패: ' + JSON.stringify(r.data), true);
+      }
+    }
+    async function doMe() {
+      const r = await api.get('/users/me', true);
+      const el = document.getElementById('me');
+      el.textContent = r.ok ? JSON.stringify(r.data, null, 2) : '오류 ' + r.status + ': ' + JSON.stringify(r.data, null, 2);
+    }
+    async function doRefresh() {
+      const refresh = localStorage.getItem('refreshToken');
+      if (!refresh) return log('authLog', 'refreshToken 없음', true);
+      const r = await api.post('/auth/refresh', { refreshToken: refresh });
+      if (r.ok) { setTokens(r.data.accessToken, r.data.refreshToken); log('authLog', '리프레시 성공'); }
+      else log('authLog', '리프레시 실패: ' + JSON.stringify(r.data), true);
+    }
+    async function doLogout() {
+      const refresh = localStorage.getItem('refreshToken');
+      if (!refresh) return log('authLog', 'refreshToken 없음', true);
+      const r = await api.post('/auth/logout', { refreshToken: refresh });
+      if (r.ok || r.status === 204) { clearTokens(); log('authLog', '로그아웃 성공'); }
+      else log('authLog', '로그아웃 실패: ' + JSON.stringify(r.data), true);
+    }
+    async function listItems() {
+      const r = await api.get('/items');
+      document.getElementById('items').textContent = r.ok ? JSON.stringify(r.data, null, 2) : '오류 ' + r.status + ': ' + JSON.stringify(r.data);
+    }
+    async function createItem() {
+      const name = document.getElementById('itemName').value.trim();
+      const r = await api.post('/items', { name }, true);
+      if (r.ok || r.status === 201) { log('itemLog', '아이템 생성 성공: ' + JSON.stringify(r.data)); listItems(); }
+      else log('itemLog', '아이템 생성 실패: ' + JSON.stringify(r.data), true);
+    }
+
+    // 카카오: 인가 후 콜백에서 #accessToken, #refreshToken 해시를 받아 저장
+    function tryParseTokenFromHash() {
+      if (!location.hash) return;
+      const h = new URLSearchParams(location.hash.substring(1));
+      const at = h.get('accessToken');
+      const rt = h.get('refreshToken');
+      if (at || rt) {
+        setTokens(at, rt);
+        history.replaceState({}, '', location.pathname);
+        log('authLog', '카카오 콜백 토큰 저장 완료');
+        fetchMeForState();
+      }
+    }
+
+    function kakaoLogin() {
+      const path = location.pathname + (location.search || '');
+      const redirectParam = encodeURIComponent(path);
+      window.location.href = '/auth/kakao/login?redirect=' + redirectParam;
+    }
+
+    // ===== 로그인 상태 표시 =====
+    function b64urlDecode(str) {
+      try {
+        str = str.replace(/-/g, '+').replace(/_/g, '/');
+        const pad = str.length % 4;
+        if (pad) str += '='.repeat(4 - pad);
+        return atob(str);
+      } catch { return null; }
+    }
+    function parseJwt(token) {
+      if (!token) return null;
+      const parts = token.split('.');
+      if (parts.length !== 3) return null;
+      const json = b64urlDecode(parts[1]);
+      if (!json) return null;
+      try { return JSON.parse(json); } catch { return null; }
+    }
+    function isExpired(token) {
+      const p = parseJwt(token);
+      if (!p || !p.exp) return false;
+      const now = Math.floor(Date.now()/1000);
+      return p.exp <= now;
+    }
+    function setCreateEnabled(on) {
+      const btn = document.getElementById('btnCreate');
+      if (btn) btn.disabled = !on;
+    }
+    async function fetchMeForState() {
+      const state = document.getElementById('loginState');
+      const r = await api.get('/users/me', true);
+      if (r.ok) {
+        const roles = (r.data.roles||[]).join(',');
+        state.className = 'state ok';
+        state.textContent = `로그인됨: ${r.data.email} (roles: ${roles})`;
+        setCreateEnabled(true);
+      } else {
+        state.className = 'state err';
+        state.textContent = '로그인 안 됨 또는 토큰 만료';
+        setCreateEnabled(false);
+      }
+    }
+    function updateLoginState() {
+      const access = localStorage.getItem('accessToken');
+      const state = document.getElementById('loginState');
+      if (!access) {
+        state.className = 'state err';
+        state.textContent = '로그인 안 됨';
+        setCreateEnabled(false);
+        return;
+      }
+      if (isExpired(access)) {
+        state.className = 'state err';
+        state.textContent = 'Access 토큰 만료됨 — 갱신을 실행하세요';
+        setCreateEnabled(false);
+        return;
+      }
+      fetchMeForState();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      tryParseTokenFromHash();
+      renderTokens();
+      updateLoginState();
+      listItems();
+    });
+  </script>
+  <!-- 이 화면은 과제 검증을 위한 최소 기능만 제공합니다. -->
+  <!-- 카카오 로그인 관련 UI/코드는 제거되었습니다. 필수 플로우만 남김. -->
+</head>
+<body>
+  <h1>로그인 테스트 (필수 기능)</h1>
+  <div id="loginState" class="state err">로그인 안 됨</div>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>이메일</label>
+        <input type="email" id="email" placeholder="a@b.com" />
+      </div>
+      <div>
+        <label>비밀번호</label>
+        <input type="password" id="password" placeholder="P@ssw0rd!" />
+      </div>
+      <div>
+        <label>이름</label>
+        <input type="text" id="name" placeholder="Alice" />
+      </div>
+    </div>
+    <div class="row">
+      <button onclick="doRegister()">회원가입</button>
+      <button onclick="doLogin()">로그인</button>
+      <button onclick="doMe()">/users/me</button>
+      <button onclick="doRefresh()">토큰 갱신</button>
+      <button onclick="doLogout()">로그아웃</button>
+      <button type="button" onclick="kakaoLogin()">카카오 로그인</button>
+    </div>
+    <div id="authLog" class="hint"></div>
+  </div>
+
+  <div class="card">
+    <h2>토큰</h2>
+    <div><strong>Access</strong></div>
+    <pre class="token" id="access">(없음)</pre>
+    <div><strong>Refresh</strong></div>
+    <pre class="token" id="refresh">(없음)</pre>
+  </div>
+
+  <div class="card">
+    <h2>/users/me 응답</h2>
+    <pre id="me">(미호출)</pre>
+  </div>
+
+  <div class="card">
+    <h2>Items</h2>
+    <div class="row">
+      <input type="text" id="itemName" placeholder="Item name" />
+      <button id="btnCreate" onclick="createItem()" disabled>아이템 생성(인증 필요)</button>
+      <button onclick="listItems()">목록 새로고침</button>
+    </div>
+    <div id="itemLog" class="hint"></div>
+    <pre id="items">(미호출)</pre>
+  </div>
+
+  <p class="hint">필요 최소 화면만 포함되어 있습니다. 상세 문서는 FLOW.md/README.md 참고.</p>
+</body>
+</html>

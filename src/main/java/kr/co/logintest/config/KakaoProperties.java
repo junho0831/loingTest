@@ -14,7 +14,7 @@ public class KakaoProperties {
     @Value("${kakao.client-secret:${KAKAO_CLIENT_SECRET:}}")
     public String clientSecret; // 선택
 
-    @Value("${kakao.redirect-uri:${KAKAO_REDIRECT_URI:http://localhost:8080/auth/kakao/callback}}")
+    @Value("${kakao.redirect-uri:${KAKAO_REDIRECT_URI:http://localhost:8080/login/oauth2/code/kakao}}")
     public String redirectUri; // 카카오에 등록된 콜백 URL
 
     @Value("${app.front-redirect-uri:${APP_FRONT_REDIRECT_URI:}}")

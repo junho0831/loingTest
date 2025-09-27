@@ -5,7 +5,7 @@ Implements email/password signup and login with JWT Access/Refresh tokens, refre
 Optional Kakao OAuth2 is outlined below (skeleton not included by default).
 
 ## Stack
-- Java 17, Spring Boot 3
+- Java 17, Spring Boot 3.5
 - Spring Security (stateless, JWT)
 - Spring Data JPA + H2 for local dev
 - JJWT (HS256)
@@ -19,8 +19,19 @@ H2 console: `http://localhost:8080/h2-console` (JDBC URL `jdbc:h2:mem:logintest`
 
 테스트 페이지: `http://localhost:8080/` (정적 HTML 대시보드)
 
-## Environment Variables (.env.example)
-`.env.example` 파일을 복사하여 환경변수를 설정하세요(또는 셸에서 직접 설정). HS256을 사용하므로 비밀키는 최소 256비트(32바이트 이상)여야 합니다.
+## 사용 방법 (대시보드)
+- 실행 후 브라우저에서 `http://localhost:8080/` 접속
+- 회원가입: 이메일/비밀번호/이름 입력 → “회원가입” 클릭
+- 로그인: “로그인” → Access/Refresh 토큰이 화면에 표시/저장(localStorage)
+- 내 정보: “/users/me” → 현재 사용자 정보 확인
+- 아이템: “목록 새로고침”(공개), “아이템 생성(인증 필요)”(로그인 후)
+- 토큰 갱신: “토큰 갱신” → 새 Access/Refresh 발급
+- 로그아웃: “로그아웃” → 서버 측 Refresh 무효화(token_version 증가)
+
+빠른 만료 테스트: 실행 전에 `JWT_ACCESS_TTL=PT5S` 등으로 설정하여 갱신/만료 흐름을 쉽게 확인할 수 있습니다.
+
+## Environment Variables
+애플리케이션은 부팅 시 `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET`이 없으면 즉시 종료합니다. 셸에서 직접 export 하거나 `docker-compose.yml`을 수정해 안전한 값을 넣어주세요. HS256을 사용하므로 비밀키는 최소 256비트(32바이트 이상)여야 합니다.
 
 ```
 JWT_ACCESS_SECRET=dev-access-secret-please-change-32bytes-min-123456
@@ -30,7 +41,7 @@ JWT_ACCESS_TTL=PT15M
 JWT_REFRESH_TTL=P14D
 ```
 
-개발 편의를 위해 기본값이 `application.properties`에 정의되어 있지만, 실제 환경에서는 반드시 환경변수로 안전한 값으로 교체하세요.
+값을 지정하지 않으면 애플리케이션이 시작되지 않습니다. 아래 예시는 개발 편의용이니 실제 환경에서는 반드시 교체하세요.
 
 강력한 비밀키(32바이트를 Base64 인코딩)를 생성하려면 다음 명령을 사용할 수 있습니다:
 
@@ -51,7 +62,7 @@ docker run --rm -p 8080:8080 \
   -e JWT_REFRESH_SECRET=dev-refresh-secret-please-change-32bytes-min-abcdef \
   -e JWT_ACCESS_TTL=PT15M -e JWT_REFRESH_TTL=P14D \
   -e KAKAO_CLIENT_ID=your_kakao_client_id \
-  -e KAKAO_REDIRECT_URI=http://localhost:8080/auth/kakao/callback \
+  -e KAKAO_REDIRECT_URI=http://localhost:8080/login/oauth2/code/kakao \
   logintest:local
 ```
 
@@ -59,9 +70,41 @@ docker run --rm -p 8080:8080 \
 ```bash
 docker-compose up --build
 ```
-`.env` 파일을 사용하려면 `docker-compose.yml`의 `env_file` 주석을 해제하고 루트에 `.env`를 준비하세요.
+Swagger UI: `http://localhost:8080/swagger-ui/index.html` (springdoc-openapi)
+
+`docker-compose.yml`에는 개발용 값이 하드코딩되어 있어 바로 실행할 수 있습니다. 보안 환경에서는 해당 파일의 `environment` 블록을 안전한 값으로 교체하거나 `docker-compose --env-file` 옵션 등을 사용하세요.
 
 ## API
+
+## 사용 방법 (API 직접 호출)
+- 회원가입
+```bash
+curl -X POST http://localhost:8080/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"a@b.com","password":"P@ssw0rd!","name":"Alice"}'
+```
+- 로그인
+```bash
+curl -s -X POST http://localhost:8080/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"a@b.com","password":"P@ssw0rd!"}'
+```
+- 내 정보
+```bash
+curl http://localhost:8080/users/me -H "Authorization: Bearer <accessToken>"
+```
+- 토큰 갱신
+```bash
+curl -X POST http://localhost:8080/auth/refresh \
+  -H 'Content-Type: application/json' \
+  -d '{"refreshToken":"<refreshToken>"}'
+```
+- 로그아웃
+```bash
+curl -X POST http://localhost:8080/auth/logout \
+  -H 'Content-Type: application/json' \
+  -d '{"refreshToken":"<refreshToken>"}'
+```
 
 ### POST `/auth/register`
 Request:
@@ -116,7 +159,10 @@ Response 200:
   - Access: `sub`(userId), `email`, `role`, `typ=access`, `iat`, `exp`
   - Refresh: `sub`(userId), `email`, `tv`(tokenVersion), `typ=refresh`, `iat`, `exp`
 - Expiry: configurable via `JWT_ACCESS_TTL` and `JWT_REFRESH_TTL` (default 15m/14d)
-- Signing: HS256 with secrets from env
+- Signing: **HS256** (공유 키)
+  - 이유: 단일 서비스 구조에서 키 관리가 단순하고, 환경변수 기반으로 빠르게 교체할 수 있어 과제 범위 내 개발/테스트가 용이합니다.
+  - RS256 미선택 사유: 비대칭 키를 쓰려면 KMS/비밀 저장소에 개인키를 두고, 검증 노드에 공개키를 배포하며, 키 회전·JWKS 공개까지 포함한 운영 전략이 필요합니다. 이번 과제에서는 해당 인프라 구성이 범위를 벗어나 단일 키(HS256)를 택했습니다.
+  - 향후 확장: `JwtTokenService` 시그니처를 바꿔 키 로딩 방식을 추상화하면 RS256 전환이 가능하며, 다중 서비스에서 토큰 검증을 공유하려면 공개키 노출(JWKS) 등을 추가하면 됩니다.
 - Delivery: `Authorization: Bearer <token>` header
 - Invalidation: On logout, increment `users.token_version` so old refresh tokens are rejected
 
@@ -146,17 +192,25 @@ Response 200:
 - 최초 로그인 시 자동 가입(ROLE=USER, passwordHash=null)
 - 재로그인 시 동일 providerId로 기존 계정 재사용 → 중복 생성 방지
 
-환경변수:
+환경변수(업데이트됨):
 ```
 KAKAO_CLIENT_ID=...            # 필수
-KAKAO_CLIENT_SECRET=...        # 선택(사용 중이면 카카오 콘솔과 일치)
-KAKAO_REDIRECT_URI=http://localhost:8080/auth/kakao/callback
-APP_FRONT_REDIRECT_URI=http://localhost:3000/auth/kakao/callback  # 선택
+KAKAO_CLIENT_SECRET=...        # 콘솔에서 "사용함"이면 필수(일치해야 함)
+KAKAO_REDIRECT_URI=http://localhost:8080/login/oauth2/code/kakao   # 기본값도 동일
+APP_FRONT_REDIRECT_URI=http://localhost:8080/                      # 선택(미설정 시 기본적으로 / 로 이동)
 ```
 
-테스트 페이지로 콜백하여 바로 토큰을 저장하고 싶다면:
+카카오 로그인 흐름(업데이트됨)
 ```
-APP_FRONT_REDIRECT_URI=http://localhost:8080/
+1) 기본 동작: 카카오 콜백에서 홈(/)으로 302 리다이렉트하며 URL 해시에 토큰 전달
+   예) http://localhost:8080/#accessToken=...&refreshToken=...
+   화면(index.html)이 해시를 파싱해 토큰을 저장하고 로그인 상태를 표시
+
+2) 프런트로 리다이렉트: APP_FRONT_REDIRECT_URI를 설정하면 해당 URL로 리다이렉트(#토큰 포함)
+   예) APP_FRONT_REDIRECT_URI=http://localhost:3000/auth/callback
+
+3) 특정 경로로 리다이렉트: /auth/kakao/login?redirect=/next 형태로 시작하면
+   콜백 후 /next#accessToken=...&refreshToken=... 로 이동(동일 오리진 경로만 허용)
 ```
 이 경우 콜백에서 `http://localhost:8080/#accessToken=...&refreshToken=...` 로 리다이렉트되고, 페이지가 해시를 파싱해 토큰을 저장합니다.
 

@@ -6,20 +6,23 @@
 
 ## 구성요소
 - 클라이언트: 정적 대시보드 `http://localhost:8080/` 에서 버튼으로 E2E 테스트
-- 서버: Spring Boot 3, Spring Security(JWT, Stateless), Validation
+- 서버: Spring Boot 3.5, Spring Security(JWT, Stateless), Validation
 - DB: H2(in-memory) — `users`, `items`
 - JWT: JJWT(HS256), Access/Refresh 서명·검증
 
 ## 환경변수(요약)
 - `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET`
   - HS256 공유키. 32바이트(256비트) 이상 또는 Base64 디코딩 32바이트 이상 필수
+  - 미설정 시 애플리케이션이 바로 종료되므로 반드시 지정해야 함
   - 생성 예: `openssl rand -base64 32`
 - `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL`
   - ISO-8601 Duration. 예) `PT15M`(15분), `P14D`(14일)
 - `KAKAO_CLIENT_ID` / `KAKAO_CLIENT_SECRET(선택)` / `KAKAO_REDIRECT_URI`
-  - 예) `http://localhost:8080/auth/kakao/callback`
+  - 예) `http://localhost:8080/login/oauth2/code/kakao`
 - `APP_FRONT_REDIRECT_URI`
   - 카카오 콜백 후 프론트 리다이렉트 URL. 예) `http://localhost:8080/`
+
+> 로컬 개발 편의를 위해 `docker-compose.yml`에 위 변수의 예시 값이 미리 입력되어 있으나, 실 서비스에서는 반드시 안전한 값으로 교체해야 합니다.
 
 ## 데이터 모델
 - users: `id`, `email(unique)`, `password_hash`, `name`, `role(USER/ADMIN)`, `provider(local/kakao)`, `provider_id`, `token_version`, `created_at`, `updated_at`
@@ -77,9 +80,10 @@
 - 이후 기존 Refresh로 갱신 시 401(`AUTH_REFRESH_REVOKED`)
 
 6) 카카오 로그인(선택)
-- `/auth/kakao/login` → state 쿠키 설정 후 카카오 인가 페이지로 이동
+- `/auth/kakao/login` → state 쿠키 설정 후 카카오 인가 페이지로 이동(prompt=login 파라미터 포함)
 - 콜백에서 코드 교환 → 사용자 조회 → 내부 사용자 연결/최초 자동가입(이메일 미제공 시 `kakao_<id>@kakao.local` 생성)
 - 내부 JWT 발급(JSON 또는 `APP_FRONT_REDIRECT_URI`로 리다이렉트)
+- 대시보드 버튼은 현재 페이지 경로를 `redirect` 파라미터로 전달하여 로그인 후 동일 화면으로 복귀
 
 ## 시퀀스(머메이드)
 ```mermaid
@@ -140,6 +144,7 @@ sequenceDiagram
 
 ## 실행/테스트 가이드(요약)
 - 로컬 실행: `./gradlew bootRun`
+- Swagger UI: `http://localhost:8080/swagger-ui/index.html` (springdoc-openapi)
 - Docker: `docker-compose up --build`
 - 대시보드: 브라우저에서 `http://localhost:8080/`
   - 회원가입 → 로그인 → `/users/me` → Items 생성/목록 → 토큰 갱신 → 로그아웃 시나리오 확인
@@ -158,4 +163,3 @@ sequenceDiagram
 - 401 정적 리소스 접근 불가: 정적 리소스 허용 구성 반영 후 재시작
 - 401 AUTH_TOKEN_EXPIRED: Access 만료 → `/auth/refresh`로 재발급
 - 401 AUTH_REFRESH_REVOKED: 로그아웃 또는 버전 불일치 → 새 로그인 필요
-
