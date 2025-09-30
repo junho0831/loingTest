@@ -1,6 +1,9 @@
 package kr.co.logintest.application.kakao;
 
+import kr.co.logintest.application.AuthTokens;
 import kr.co.logintest.application.JwtTokenService;
+import kr.co.logintest.application.RefreshTokenService;
+import kr.co.logintest.config.JwtProperties;
 import kr.co.logintest.config.KakaoProperties;
 import kr.co.logintest.domain.AuthProvider;
 import kr.co.logintest.domain.Role;
@@ -9,7 +12,7 @@ import kr.co.logintest.repository.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Map;
+import java.time.Instant;
 
 /**
  * 카카오 OAuth2 연동 서비스: 인가 URL 생성, 콜백 처리(코드 교환/사용자 조회/내부 사용자 연결 및 JWT 발급).
@@ -20,12 +23,17 @@ public class KakaoAuthService {
     private final KakaoProperties props;
     private final UserRepository users;
     private final JwtTokenService tokens;
+    private final RefreshTokenService refreshTokens;
+    private final JwtProperties jwtProperties;
 
-    public KakaoAuthService(KakaoOAuthClient client, KakaoProperties props, UserRepository users, JwtTokenService tokens) {
+    public KakaoAuthService(KakaoOAuthClient client, KakaoProperties props, UserRepository users,
+                            JwtTokenService tokens, RefreshTokenService refreshTokens, JwtProperties jwtProperties) {
         this.client = client;
         this.props = props;
         this.users = users;
         this.tokens = tokens;
+        this.refreshTokens = refreshTokens;
+        this.jwtProperties = jwtProperties;
     }
 
     /**
@@ -45,7 +53,7 @@ public class KakaoAuthService {
      * 콜백 처리: 토큰 교환 → 사용자 조회 → 내부 사용자 연결/최초 생성 → 내부 JWT 발급.
      */
     @Transactional
-    public Map<String, String> handleCallback(String code) {
+    public AuthTokens handleCallback(String code) {
         var token = client.exchangeCodeForToken(code);
         var kakaoUser = client.fetchUser(token.accessToken);
 
@@ -76,8 +84,14 @@ public class KakaoAuthService {
         }
 
         String access = tokens.generateAccessToken(user.getId(), user.getEmail(), user.getRole());
-        String refresh = tokens.generateRefreshToken(user.getId(), user.getEmail(), user.getTokenVersion());
-        return Map.of("access", access, "refresh", refresh);
+        String refresh = issueRefreshToken(user);
+        return new AuthTokens(access, refresh);
+    }
+
+    private String issueRefreshToken(User user) {
+        Instant expiresAt = Instant.now().plus(jwtProperties.refreshTtlDuration());
+        var registered = refreshTokens.register(user, expiresAt);
+        return tokens.generateRefreshToken(user.getId(), user.getEmail(), user.getTokenVersion(), registered.getJti());
     }
 
     private String url(String s) {

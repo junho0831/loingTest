@@ -22,6 +22,12 @@ public class JwtProperties {
     @Value("${jwt.refresh.ttl:${JWT_REFRESH_TTL:P14D}}")
     public String refreshTtl;
 
+    @Value("${jwt.cookie.secure:${JWT_COOKIE_SECURE:false}}")
+    public boolean cookieSecure;
+
+    @Value("${jwt.cookie.samesite:${JWT_COOKIE_SAMESITE:Lax}}")
+    public String cookieSameSite;
+
     /** ISO-8601 문자열을 Duration으로 변환 */
     public Duration accessTtlDuration() {
         return Duration.parse(accessTtl);

@@ -3,9 +3,10 @@ package kr.co.logintest.web;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import kr.co.logintest.application.AuthTokens;
 import kr.co.logintest.application.kakao.KakaoAuthService;
 import kr.co.logintest.config.KakaoProperties;
-import kr.co.logintest.web.dto.AuthDtos;
+import kr.co.logintest.web.support.TokenCookieFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -24,10 +25,12 @@ import java.util.Map;
 public class KakaoOAuth2CompatController {
     private final KakaoAuthService kakaoAuthService;
     private final KakaoProperties props;
+    private final TokenCookieFactory cookieFactory;
 
-    public KakaoOAuth2CompatController(KakaoAuthService kakaoAuthService, KakaoProperties props) {
+    public KakaoOAuth2CompatController(KakaoAuthService kakaoAuthService, KakaoProperties props, TokenCookieFactory cookieFactory) {
         this.kakaoAuthService = kakaoAuthService;
         this.props = props;
+        this.cookieFactory = cookieFactory;
     }
 
     @GetMapping("/login/oauth2/code/kakao")
@@ -46,15 +49,16 @@ public class KakaoOAuth2CompatController {
         }
         clearStateCookie(response);
 
-        var tokens = kakaoAuthService.handleCallback(code);
+        AuthTokens tokens = kakaoAuthService.handleCallback(code);
 
         String cookieRedirect = readRedirectCookie(request);
         clearRedirectCookie(response);
         String front = resolveFrontRedirect(cookieRedirect);
-        String redirect = front + "#accessToken=" + url(tokens.get("access")) +
-                "&refreshToken=" + url(tokens.get("refresh"));
+        String redirect = front + "#login=success";
         HttpHeaders headers = new HttpHeaders();
         headers.setLocation(java.net.URI.create(redirect));
+        headers.add(HttpHeaders.SET_COOKIE, cookieFactory.issueAccess(tokens.accessToken()).toString());
+        headers.add(HttpHeaders.SET_COOKIE, cookieFactory.issueRefresh(tokens.refreshToken()).toString());
         return new ResponseEntity<>(headers, HttpStatus.FOUND);
     }
 

@@ -36,26 +36,12 @@ public class AuthDtos {
     }
 
     @Data
-    public static class RefreshRequest {
-        @NotBlank
-        private String refreshToken;
-    }
-
-    @Data
-    public static class LogoutRequest {
-        // Either body token or can be header; body is used here
-        @NotBlank
-        private String refreshToken;
-    }
-
-    @Data
     @Builder
     @NoArgsConstructor
     @AllArgsConstructor
-    public static class TokenResponse {
-        private String accessToken;
-        private String refreshToken;
+    public static class TokenMetaResponse {
         private long expiresIn; // seconds for access token
+        private String tokenType;
     }
 
     @Data
@@ -69,4 +55,3 @@ public class AuthDtos {
         private String[] roles;
     }
 }
-
