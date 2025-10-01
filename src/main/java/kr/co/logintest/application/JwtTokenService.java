@@ -64,15 +64,16 @@ public class JwtTokenService {
     }
 
     /**
-     * Refresh 토큰 생성: sub(userId), email, tv(tokenVersion), typ=refresh, iat/exp 포함
+     * Refresh 토큰 생성: sub(userId), email, tv(tokenVersion), jti, typ=refresh, iat/exp 포함
      */
-    public String generateRefreshToken(long userId, String email, int tokenVersion) {
+    public String generateRefreshToken(long userId, String email, int tokenVersion, String jti) {
         Instant now = Instant.now();
         Instant exp = now.plus(props.refreshTtlDuration());
         return Jwts.builder()
                 .setSubject(Long.toString(userId))
                 .setIssuedAt(Date.from(now))
                 .setExpiration(Date.from(exp))
+                .setId(jti)
                 .claim("email", email)
                 .claim("tv", tokenVersion)
                 .claim("typ", "refresh")

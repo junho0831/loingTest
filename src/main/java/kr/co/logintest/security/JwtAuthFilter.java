@@ -4,6 +4,7 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jws;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import kr.co.logintest.application.JwtTokenService;
@@ -33,16 +34,20 @@ public class JwtAuthFilter extends OncePerRequestFilter {
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
-        String auth = request.getHeader(HttpHeaders.AUTHORIZATION);
-        if (auth != null && auth.startsWith("Bearer ")) {
-            String token = auth.substring(7);
+        String token = resolveToken(request);
+        if (token != null) {
             try {
                 Jws<Claims> jws = tokenService.parseAccess(token);
                 Claims c = jws.getBody();
-                String role = (String) c.get("role");
-                Collection<? extends GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role));
-                var authToken = new JwtAuthentication(c.getSubject(), (String) c.get("email"), authorities);
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+                String typ = c.get("typ", String.class);
+                if (!"access".equals(typ)) {
+                    request.setAttribute("auth_error_code", "invalid");
+                } else {
+                    String role = (String) c.get("role");
+                    Collection<? extends GrantedAuthority> authorities = List.of(new SimpleGrantedAuthority("ROLE_" + role));
+                    var authToken = new JwtAuthentication(c.getSubject(), (String) c.get("email"), authorities);
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                }
             } catch (io.jsonwebtoken.ExpiredJwtException ex) {
                 // 만료 토큰: 인증 실패로 처리하되, 에러 코드는 expired로 설정
                 request.setAttribute("auth_error_code", "expired");
@@ -52,6 +57,21 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         }
         filterChain.doFilter(request, response);
+    }
+
+    private String resolveToken(HttpServletRequest request) {
+        String auth = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (auth != null && auth.startsWith("Bearer ")) {
+            return auth.substring(7);
+        }
+        if (request.getCookies() != null) {
+            for (Cookie cookie : request.getCookies()) {
+                if ("access_token".equals(cookie.getName()) && cookie.getValue() != null && !cookie.getValue().isBlank()) {
+                    return cookie.getValue();
+                }
+            }
+        }
+        return null;
     }
 
     static class JwtAuthentication extends AbstractAuthenticationToken {

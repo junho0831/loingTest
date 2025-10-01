@@ -3,7 +3,9 @@ package kr.co.logintest.error;
 public enum ErrorCode {
     AUTH_INVALID_CREDENTIALS(401, "AUTH_INVALID_CREDENTIALS", "Invalid email or password"),
     AUTH_TOKEN_EXPIRED(401, "AUTH_TOKEN_EXPIRED", "Token expired"),
+    AUTH_TOKEN_INVALID(401, "AUTH_TOKEN_INVALID", "Token invalid"),
     AUTH_REFRESH_REVOKED(401, "AUTH_REFRESH_REVOKED", "Refresh token revoked or invalid"),
+    AUTH_REFRESH_REQUIRED(401, "AUTH_REFRESH_REQUIRED", "Refresh token required"),
     AUTH_FORBIDDEN(403, "AUTH_FORBIDDEN", "Forbidden"),
     DUPLICATE_EMAIL(409, "DUPLICATE_EMAIL", "Email already exists"),
     VALIDATION_ERROR(400, "VALIDATION_ERROR", "Validation failed"),
@@ -20,4 +22,3 @@ public enum ErrorCode {
         this.defaultMessage = defaultMessage;
     }
 }
-

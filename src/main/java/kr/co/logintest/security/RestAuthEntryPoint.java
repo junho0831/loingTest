@@ -21,6 +21,8 @@ public class RestAuthEntryPoint implements AuthenticationEntryPoint {
         ErrorCode ec;
         if ("expired".equals(codeAttr)) {
             ec = ErrorCode.AUTH_TOKEN_EXPIRED;
+        } else if ("invalid".equals(codeAttr)) {
+            ec = ErrorCode.AUTH_TOKEN_INVALID;
         } else {
             ec = ErrorCode.AUTH_INVALID_CREDENTIALS;
         }

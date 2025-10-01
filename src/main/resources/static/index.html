@@ -27,13 +27,17 @@
       async post(path, body, useAccess=false) {
         const headers = { 'Content-Type': 'application/json' };
         if (useAccess) headers['Authorization'] = 'Bearer ' + (localStorage.getItem('accessToken') || '');
-        const r = await fetch(path, { method: 'POST', headers, body: JSON.stringify(body || {}) });
+        const init = { method: 'POST', headers, credentials: 'same-origin' };
+        if (body !== undefined) {
+          init.body = JSON.stringify(body);
+        }
+        const r = await fetch(path, init);
         return parse(r);
       },
       async get(path, useAccess=false) {
         const headers = {};
         if (useAccess) headers['Authorization'] = 'Bearer ' + (localStorage.getItem('accessToken') || '');
-        const r = await fetch(path, { headers });
+        const r = await fetch(path, { headers, credentials: 'same-origin' });
         return parse(r);
       }
     };
@@ -44,21 +48,13 @@
       return { ok: resp.ok, status: resp.status, data };
     }
 
-    function setTokens(access, refresh) {
-      if (access) localStorage.setItem('accessToken', access);
-      if (refresh) localStorage.setItem('refreshToken', refresh);
-      renderTokens();
-      updateLoginState();
-    }
     function clearTokens() {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
       renderTokens();
       updateLoginState();
     }
     function renderTokens() {
-      document.getElementById('access').textContent = localStorage.getItem('accessToken') || '(없음)';
-      document.getElementById('refresh').textContent = localStorage.getItem('refreshToken') || '(없음)';
+      document.getElementById('access').textContent = 'HttpOnly 쿠키(access_token)에 저장됨';
+      document.getElementById('refresh').textContent = 'HttpOnly 쿠키(refresh_token)에 저장됨';
     }
     function log(id, msg, isErr=false) {
       const el = document.getElementById(id);
@@ -79,8 +75,8 @@
       const password = document.getElementById('password').value;
       const r = await api.post('/auth/login', { email, password });
       if (r.ok) {
-        setTokens(r.data.accessToken, r.data.refreshToken);
         log('authLog', '로그인 성공');
+        renderTokens();
         fetchMeForState();
       } else {
         log('authLog', '로그인 실패: ' + JSON.stringify(r.data), true);
@@ -92,16 +88,12 @@
       el.textContent = r.ok ? JSON.stringify(r.data, null, 2) : '오류 ' + r.status + ': ' + JSON.stringify(r.data, null, 2);
     }
     async function doRefresh() {
-      const refresh = localStorage.getItem('refreshToken');
-      if (!refresh) return log('authLog', 'refreshToken 없음', true);
-      const r = await api.post('/auth/refresh', { refreshToken: refresh });
-      if (r.ok) { setTokens(r.data.accessToken, r.data.refreshToken); log('authLog', '리프레시 성공'); }
+      const r = await api.post('/auth/refresh');
+      if (r.ok) { renderTokens(); log('authLog', '리프레시 성공'); fetchMeForState(); }
       else log('authLog', '리프레시 실패: ' + JSON.stringify(r.data), true);
     }
     async function doLogout() {
-      const refresh = localStorage.getItem('refreshToken');
-      if (!refresh) return log('authLog', 'refreshToken 없음', true);
-      const r = await api.post('/auth/logout', { refreshToken: refresh });
+      const r = await api.post('/auth/logout');
       if (r.ok || r.status === 204) { clearTokens(); log('authLog', '로그아웃 성공'); }
       else log('authLog', '로그아웃 실패: ' + JSON.stringify(r.data), true);
     }
@@ -116,16 +108,14 @@
       else log('itemLog', '아이템 생성 실패: ' + JSON.stringify(r.data), true);
     }
 
-    // 카카오: 인가 후 콜백에서 #accessToken, #refreshToken 해시를 받아 저장
+    // 카카오: 인가 후 콜백에서 #login=success 해시를 받아 표시
     function tryParseTokenFromHash() {
       if (!location.hash) return;
       const h = new URLSearchParams(location.hash.substring(1));
-      const at = h.get('accessToken');
-      const rt = h.get('refreshToken');
-      if (at || rt) {
-        setTokens(at, rt);
+      if (h.get('login') === 'success') {
         history.replaceState({}, '', location.pathname);
-        log('authLog', '카카오 콜백 토큰 저장 완료');
+        log('authLog', '카카오 로그인 완료');
+        renderTokens();
         fetchMeForState();
       }
     }
@@ -137,28 +127,6 @@
     }
 
     // ===== 로그인 상태 표시 =====
-    function b64urlDecode(str) {
-      try {
-        str = str.replace(/-/g, '+').replace(/_/g, '/');
-        const pad = str.length % 4;
-        if (pad) str += '='.repeat(4 - pad);
-        return atob(str);
-      } catch { return null; }
-    }
-    function parseJwt(token) {
-      if (!token) return null;
-      const parts = token.split('.');
-      if (parts.length !== 3) return null;
-      const json = b64urlDecode(parts[1]);
-      if (!json) return null;
-      try { return JSON.parse(json); } catch { return null; }
-    }
-    function isExpired(token) {
-      const p = parseJwt(token);
-      if (!p || !p.exp) return false;
-      const now = Math.floor(Date.now()/1000);
-      return p.exp <= now;
-    }
     function setCreateEnabled(on) {
       const btn = document.getElementById('btnCreate');
       if (btn) btn.disabled = !on;
@@ -178,20 +146,6 @@
       }
     }
     function updateLoginState() {
-      const access = localStorage.getItem('accessToken');
-      const state = document.getElementById('loginState');
-      if (!access) {
-        state.className = 'state err';
-        state.textContent = '로그인 안 됨';
-        setCreateEnabled(false);
-        return;
-      }
-      if (isExpired(access)) {
-        state.className = 'state err';
-        state.textContent = 'Access 토큰 만료됨 — 갱신을 실행하세요';
-        setCreateEnabled(false);
-        return;
-      }
       fetchMeForState();
     }
 
@@ -203,7 +157,7 @@
     });
   </script>
   <!-- 이 화면은 과제 검증을 위한 최소 기능만 제공합니다. -->
-  <!-- 카카오 로그인 관련 UI/코드는 제거되었습니다. 필수 플로우만 남김. -->
+  <!-- 카카오 로그인 버튼은 Access 토큰만 해시로 전달하고 Refresh는 HttpOnly 쿠키로 처리합니다. -->
 </head>
 <body>
   <h1>로그인 테스트 (필수 기능)</h1>

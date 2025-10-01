@@ -17,10 +17,13 @@
   - 생성 예: `openssl rand -base64 32`
 - `JWT_ACCESS_TTL` / `JWT_REFRESH_TTL`
   - ISO-8601 Duration. 예) `PT15M`(15분), `P14D`(14일)
+- `JWT_COOKIE_SECURE` / `JWT_COOKIE_SAMESITE`
+  - 쿠키 Secure·SameSite 정책 제어. 로컬(dev)은 `false`/`Lax`, 운영은 `true`(+HTTPS) 권장
 - `KAKAO_CLIENT_ID` / `KAKAO_CLIENT_SECRET(선택)` / `KAKAO_REDIRECT_URI`
   - 예) `http://localhost:8080/login/oauth2/code/kakao`
 - `APP_FRONT_REDIRECT_URI`
   - 카카오 콜백 후 프론트 리다이렉트 URL. 예) `http://localhost:8080/`
+- Docker Compose를 사용할 경우 `docker-compose.yml`의 `services.app.environment` 블록을 위 값으로 교체하세요. 테스트 중 노출된 키는 카카오 콘솔에서 즉시 재발급하고, 운영 환경에서는 HTTPS(`JWT_COOKIE_SECURE=true`) 설정을 잊지 않습니다.
 
 > 로컬 개발 편의를 위해 `docker-compose.yml`에 위 변수의 예시 값이 미리 입력되어 있으나, 실 서비스에서는 반드시 안전한 값으로 교체해야 합니다.
 
@@ -34,11 +37,14 @@
 ## 보안/인증 설계
 - JWT Claims
   - Access: `sub`(userId), `email`, `role`, `typ=access`, `iat`, `exp`
-  - Refresh: `sub`(userId), `email`, `tv`(tokenVersion), `typ=refresh`, `iat`, `exp`
-- 만료: Access(기본 15분), Refresh(기본 14일) — 환경변수로 조정
+  - Refresh: `sub`(userId), `email`, `tv`(tokenVersion), `jti`, `typ=refresh`, `iat`, `exp`
+- 만료: Access(기본 15분), Refresh(기본 14일) — 환경변수로 조정(보안/UX 타협)
 - 서명: HS256(공유키). 키 길이 256비트 이상 필수
-- 전달: `Authorization: Bearer <accessToken>`
-- 무효화: 로그아웃 시 `token_version += 1`
+- 전달: Access → HttpOnly + Secure + SameSite=Lax 쿠키(`access_token`) / Refresh → HttpOnly + Secure + SameSite=Lax 쿠키(`refresh_token`)
+- 서버 저장소: `refresh_tokens` 테이블에 `user_id`, `jti`, `expires_at`, `revoked`를 저장하여 재사용 및 무효화 이력 관리
+- 무효화
+  - 단일 로그아웃: 해당 `jti` 레코드를 `revoked` 처리 + 쿠키 만료
+  - 전체 로그아웃: `token_version += 1` + 해당 사용자의 모든 `refresh_tokens` 레코드 `revoked`
 - Security
   - Stateless, CORS 허용(로컬 프론트 도메인), CSRF 비활성화
   - 정적 리소스(`/index.html` 등), `/auth/**`, `GET /items`는 공개, 그 외 인증 필요
@@ -46,9 +52,10 @@
 ## API 엔드포인트
 - Auth
   - `POST /auth/register` — { email, password, name } → 201 { id, email, name }
-  - `POST /auth/login` — { email, password } → 200 { accessToken, refreshToken, expiresIn }
-  - `POST /auth/refresh` — { refreshToken } → 200 { accessToken, refreshToken, expiresIn }
-  - `POST /auth/logout` — { refreshToken } → 204
+  - `POST /auth/login` — { email, password } → 200 { tokenType, expiresIn } + Set-Cookie access_token + Set-Cookie refresh_token
+  - `POST /auth/refresh` — Cookie `refresh_token` → 200 { tokenType, expiresIn } + Set-Cookie access_token + Set-Cookie refresh_token
+  - `POST /auth/logout` — Cookie `refresh_token` → 204 (쿠키 만료)
+  - `POST /auth/logout/all` — Cookie(`access_token`, `refresh_token`) → 204 (tokenVersion 증가, 쿠키 만료)
 - User
   - `GET /users/me` — Bearer Access 필요 → 200 { id, email, name, roles }
 - Items
@@ -56,7 +63,7 @@
   - `POST /items` — `ROLE_USER` 이상 필요
 - Kakao(선택)
   - `GET /auth/kakao/login` — 카카오 인가 페이지로 302
-  - `GET /auth/kakao/callback?code=...&state=...` — 내부 JWT 발급(JSON) 또는 프론트로 리다이렉트(`#accessToken=...&refreshToken=...`)
+- `GET /auth/kakao/callback?code=...&state=...` — Access/Refresh 쿠키 발급(JSON) 또는 프론트로 302(`#login=success`)
 
 ## 사용자 플로우(시나리오)
 1) 회원가입
@@ -65,19 +72,20 @@
 
 2) 로그인(ID/PW)
 - 자격 검증 실패 시 401(`AUTH_INVALID_CREDENTIALS`)
-- 성공 시 Access/Refresh 발급 및 만료(expiresIn) 반환
+- 성공 시 Access/Refresh 토큰을 HttpOnly 쿠키(`access_token`, `refresh_token`)로 발급하고 본문에는 메타 정보만 응답
 
 3) 보호 API 접근
-- 헤더 `Authorization: Bearer <accessToken>`로 호출
+- 쿠키 `access_token`으로 인증
 - 인증 실패/만료 시 401, 권한 부족 시 403
 
 4) 토큰 갱신(Refresh)
-- Refresh 유효성·`typ=refresh` 검증, `users.token_version` 일치 확인
-- Access/Refresh 재발급(간단 회전 정책)
+- 쿠키로 전달된 refresh_token에 대해 `typ=refresh`, `jti`, `token_version` 검증
+- 성공 시 Access/Refresh 쿠키 모두 재발급(Set-Cookie)
 
 5) 로그아웃
-- Refresh 파싱 → 해당 사용자 `token_version += 1` 저장
-- 이후 기존 Refresh로 갱신 시 401(`AUTH_REFRESH_REVOKED`)
+- 단일 로그아웃: refresh_token 쿠키 필수, 해당 `jti` 레코드 `revoked` + 쿠키 만료
+- 전체 로그아웃: access_token 쿠키로 인증, `token_version += 1` + `refresh_tokens` 일괄 `revoked`
+- 이후 기존 Refresh 사용 시 401(`AUTH_REFRESH_REVOKED`)
 
 6) 카카오 로그인(선택)
 - `/auth/kakao/login` → state 쿠키 설정 후 카카오 인가 페이지로 이동(prompt=login 파라미터 포함)
@@ -99,19 +107,23 @@ sequenceDiagram
 
   C->>A: POST /auth/login {email, password}
   A->>DB: 사용자 조회 + 비밀번호 검증
-  A-->>C: 200 {accessToken(15m), refreshToken(14d)}
+  A-->>C: 200 {tokenType, expiresIn} + Set-Cookie access_token(15m) + Set-Cookie refresh_token(14d)
 
-  C->>A: GET /users/me (Authorization: Bearer access)
+  C->>A: GET /users/me (Cookie: access_token)
   A-->>C: 200 {id, email, name, roles}
 
   Note over C: Access 만료 후
-  C->>A: POST /auth/refresh {refreshToken}
-  A->>DB: 사용자 조회 + token_version 검증
-  A-->>C: 200 {accessToken, refreshToken}
+  C->>A: POST /auth/refresh (Cookie: refresh_token)
+  A->>DB: refresh_tokens.findActive(jti) + token_version 검증
+  A-->>C: 200 {tokenType, expiresIn} + Set-Cookie access_token(rotated) + Set-Cookie refresh_token(rotated)
 
-  C->>A: POST /auth/logout {refreshToken}
-  A->>DB: users.token_version += 1
-  A-->>C: 204
+  C->>A: POST /auth/logout (Cookie: access_token, refresh_token)
+  A->>DB: refresh_tokens.revoke(jti)
+  A-->>C: 204 (access/refresh 쿠키 만료)
+
+  C->>A: POST /auth/logout/all (Cookie: access_token)
+  A->>DB: users.token_version += 1, refresh_tokens.revokeAll(user)
+  A-->>C: 204 (access/refresh 쿠키 만료)
 ```
 
 ### 카카오 로그인(가산)
@@ -136,9 +148,9 @@ sequenceDiagram
   alt 최초 로그인
     S->>DB: 사용자 자동 생성(email 없음시 kakao_<id>@kakao.local)
   end
-  S-->>B: 200 {accessToken, refreshToken}
+  S-->>B: 200 {tokenType, expiresIn} + Set-Cookie access_token + Set-Cookie refresh_token
   opt front redirect 설정 시
-    S-->>B: 302 APP_FRONT_REDIRECT_URI#accessToken=...&refreshToken=...
+    S-->>B: 302 APP_FRONT_REDIRECT_URI#login=success (헤더에 access/refresh 쿠키 포함)
   end
 ```
 
